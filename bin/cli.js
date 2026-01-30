@@ -4,60 +4,153 @@ import { exec } from 'child_process';
 import { promisify } from 'util';
 import { join, resolve, dirname, basename } from 'path';
 import { fileURLToPath } from 'url';
-import { mkdirSync, cpSync, renameSync, readFileSync, writeFileSync } from 'fs';
+import {
+  mkdirSync,
+  cpSync,
+  renameSync,
+  readFileSync,
+  writeFileSync,
+} from 'fs';
 import inquirer from 'inquirer';
 
 const asyncExec = promisify(exec);
 
 (async () => {
-    const __filename = fileURLToPath(import.meta.url);
-    const __dirname = dirname(__filename);
-    const ora = (await import('ora')).default;
-    const chalk = (await import('chalk')).default;
+  const __filename = fileURLToPath(import.meta.url);
+  const __dirname = dirname(__filename);
+  const ora = (await import('ora')).default;
+  const chalk = (await import('chalk')).default;
 
-    const projectName = process.argv[2];
+  // -----------------------------
+  //  Read raw argument
+  // -----------------------------
+  const rawProjectName = process.argv[2];
 
-    if (!projectName) {
-        console.error(chalk.red('Error: Please provide a name for your project.'));
-        process.exit(1);
+  if (!rawProjectName) {
+    console.error(chalk.red('Error: Please provide a name for your project.'));
+    process.exit(1);
+  }
+
+  // -----------------------------
+  //  Handle "." (current dir)
+  // -----------------------------
+  const useCurrentDir = rawProjectName === '.';
+
+  const projectPath = useCurrentDir
+    ? process.cwd()
+    : join(process.cwd(), rawProjectName);
+
+  const projectName = useCurrentDir
+    ? basename(projectPath)
+    : rawProjectName;
+
+  const spinner = ora();
+
+  try {
+    // -----------------------------
+    //  Create directory only if needed
+    // -----------------------------
+    if (!useCurrentDir) {
+      mkdirSync(projectPath, { recursive: true });
+      console.log(
+        chalk.bold.green(`\n${projectName} directory created.\n`)
+      );
+    } else {
+      console.log(
+        chalk.bold.green('\nUsing current directory as project.\n')
+      );
     }
 
-    const spinner = ora();
+    // -----------------------------
+    //  Ask language
+    // -----------------------------
+    const answers = await inquirer.prompt([
+      {
+        type: 'list',
+        name: 'language',
+        message: 'Which language would you like to use?',
+        choices: ['Javascript', 'Typescript'],
+      },
+    ]);
 
-    try {
-        const projectPath = resolve(process.cwd(), projectName);
-        
-        const actualProjectName = basename(projectPath);
+    const selectedTemplate =
+      answers.language === 'Javascript'
+        ? 'js-template'
+        : 'ts-template';
 
-        mkdirSync(projectPath, { recursive: true });
+    const selectedTemplatePath = resolve(
+      __dirname,
+      '..',
+      'templates',
+      selectedTemplate
+    );
 
-        console.log(chalk.bold.green(`\nTarget directory ready: ${projectPath}\n`));
+    console.log();
 
-        const packageJsonPath = join(projectPath, 'package.json');
-        const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8'));
-        
-        packageJson.name = actualProjectName.toLowerCase().replace(/\s+/g, '-'); 
-        
-        writeFileSync(packageJsonPath, JSON.stringify(packageJson, null, 2));
+    // -----------------------------
+    //  Copy template
+    // -----------------------------
+    spinner.start(
+      chalk.cyan(`Creating a new Express project with ${answers.language}`)
+    );
+    cpSync(selectedTemplatePath, projectPath, { recursive: true });
+    spinner.succeed();
 
-        process.chdir(projectPath);
-        spinner.start(chalk.cyan('Installing dependencies (this may take a moment)...'));
-        await asyncExec('npm install');
-        spinner.succeed(chalk.green('Dependencies installed!'));
+    // -----------------------------
+    //  Rename gitignore
+    // -----------------------------
+    renameSync(
+      join(projectPath, 'gitignore'),
+      join(projectPath, '.gitignore')
+    );
 
-        await asyncExec('git init');
+    // -----------------------------
+    //  Fix package.json name
+    // -----------------------------
+    const packageJsonPath = join(projectPath, 'package.json');
+    const packageJson = JSON.parse(
+      readFileSync(packageJsonPath, 'utf8')
+    );
 
-        console.log(chalk.bold.green('\n🚀 Project is ready to use!'));
-        console.log(chalk.bold('\nTo get started, run:'));
-        console.log(chalk.blue(`  cd "${projectName}"`));
-        console.log(chalk.blue('  npm run dev'));
+    packageJson.name = projectName
+      .toLowerCase()
+      .replace(/\s+/g, '-');
 
-        console.log(chalk.bold('\nTo test, run:'));
-        console.log(chalk.blue('  npm test'));
+    writeFileSync(
+      packageJsonPath,
+      JSON.stringify(packageJson, null, 2)
+    );
 
-    } catch (error) {
-        spinner.fail(chalk.red('An error occurred during setup.'));
-        console.error(error);
-        process.exit(1);
+    // -----------------------------
+    //  Install deps + git init
+    // -----------------------------
+    process.chdir(projectPath);
+
+    spinner.start(
+      chalk.cyan('Installing dependencies (this may take a moment)...')
+    );
+    await asyncExec('npm install');
+    spinner.succeed(chalk.green('Dependencies installed!'));
+
+    await asyncExec('git init');
+
+    // -----------------------------
+    //  Final instructions
+    // -----------------------------
+    console.log(chalk.bold.green('\n🚀 Project is ready to use!'));
+    console.log(chalk.bold('\nTo get started, run:'));
+
+    if (!useCurrentDir) {
+      console.log(chalk.blue(`  cd "${projectName}"`));
     }
-})()
+
+    console.log(chalk.blue('  npm run dev'));
+
+    console.log(chalk.bold('\nTo test, run:'));
+    console.log(chalk.blue('  npm test'));
+  } catch (error) {
+    spinner.fail(chalk.red('An error occurred during setup.'));
+    console.error(error);
+    process.exit(1);
+  }
+})();
