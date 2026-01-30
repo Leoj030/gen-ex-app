@@ -3,7 +3,7 @@
     "version": "0.0.1",
     "type": "module",
     "scripts": {
-        "dev": "nodemon src/index.js",
+        "dev": "node --watch src/index.js",
         "start": "node src/index.js",
         "lint": "eslint . --max-warnings 0",
         "lint:fix": "eslint . --fix",

@@ -2,7 +2,7 @@
 
 import { exec } from 'child_process';
 import { promisify } from 'util';
-import { join, resolve, dirname } from 'path';
+import { join, resolve, dirname, basename } from 'path';
 import { fileURLToPath } from 'url';
 import { mkdirSync, cpSync, renameSync, readFileSync, writeFileSync } from 'fs';
 import inquirer from 'inquirer';
@@ -25,36 +25,19 @@ const asyncExec = promisify(exec);
     const spinner = ora();
 
     try {
-        const projectPath = join(process.cwd(), projectName);
+        const projectPath = resolve(process.cwd(), projectName);
+        
+        const actualProjectName = basename(projectPath);
+
         mkdirSync(projectPath, { recursive: true });
 
-        console.log(chalk.bold.green(`\n${projectName} directory created.\n`));
+        console.log(chalk.bold.green(`\nTarget directory ready: ${projectPath}\n`));
 
-        const answers = await inquirer.prompt([
-        {
-            type: 'list',
-            name: 'language',
-            message: 'Which language would you like to use?',
-            choices: ['Javascript', 'Typescript'],
-        },]);
-
-        const selectedTemplate = answers.language === 'Javascript' ? 'js-template' : 'ts-template';
-        const selectedTemplatePath = resolve(__dirname, '..', 'templates', selectedTemplate);
-
-        console.log();
-
-        spinner.start(chalk.cyan(`Creating a new Express project with ${answers.language}`));
-        cpSync(selectedTemplatePath, projectPath, { recursive: true });
-        spinner.succeed();
-
-        renameSync(
-            join(projectPath, 'gitignore'),
-            join(projectPath, '.gitignore')
-        );
-    
         const packageJsonPath = join(projectPath, 'package.json');
         const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8'));
-        packageJson.name = projectName.toLowerCase();
+        
+        packageJson.name = actualProjectName.toLowerCase().replace(/\s+/g, '-'); 
+        
         writeFileSync(packageJsonPath, JSON.stringify(packageJson, null, 2));
 
         process.chdir(projectPath);
